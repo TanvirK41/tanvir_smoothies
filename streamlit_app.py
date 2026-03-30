@@ -1,67 +1,102 @@
-# Import python packages
 import streamlit as st
+import pandas as pd
 import requests
-from snowflake.snowpark.functions import col
+from urllib.parse import quote
 
-# Snowflake connection (Streamlit Cloud compatible)
-cnx = st.connection("snowflake")
-session = cnx.session()
+# =========================
+# CONFIG
+# =========================
+st.set_page_config(page_title="Smoothie App", page_icon="🥤", layout="centered")
 
-# Title and instructions
-st.title(":cup_with_straw: Customize your smoothie :cup_with_straw:")
-st.write("Choose the fruits you want in your custom smoothie.")
+# =========================
+# TITLE
+# =========================
+st.title("🥤 Customize your Smoothie")
+st.write("Choose up to 5 fruits for your smoothie.")
 
-# Name input
-name_on_order = st.text_input('Name on Smoothie:')
-st.write('The name on your Smoothie will be:', name_on_order)
+# =========================
+# NAME INPUT
+# =========================
+name_on_order = st.text_input("Name on Smoothie")
 
-# Load fruit data
-fruit_df = session.table("SMOOTHIES.PUBLIC.FRUIT_OPTIONS") \
-    .select(col("FRUIT_NAME")) \
-    .to_pandas()
+# =========================
+# FRUIT DATA (LOCAL)
+# =========================
+fruit_data = pd.DataFrame({
+    "FRUIT_NAME": [
+        "Apples", "Bananas", "Blueberries", "Jackfruit",
+        "Dragon Fruit", "Guava", "Figs", "Nectarine"
+    ],
+    "SEARCH_ON": [
+        "apple", "banana", "blueberry", "jackfruit",
+        "dragon fruit", "guava", "fig", "nectarine"
+    ]
+})
 
-# Multiselect input
+# =========================
+# MULTISELECT
+# =========================
 ingredients_list = st.multiselect(
     "Choose up to 5 ingredients:",
-    fruit_df["FRUIT_NAME"].tolist(),
+    fruit_data["FRUIT_NAME"].tolist(),
     max_selections=5
 )
 
-# Order submission
+# =========================
+# FUNCTION: GET NUTRITION
+# =========================
+@st.cache_data
+def get_nutrition(search_value):
+    encoded_value = quote(search_value)
+    url = f"https://my.smoothiefroot.com/api/fruit/{encoded_value}"
+
+    response = requests.get(url, timeout=5)
+
+    if response.status_code == 200:
+        return pd.DataFrame(response.json())
+    else:
+        return None
+
+# =========================
+# MAIN LOGIC
+# =========================
+ingredients_string = ''
+
 if ingredients_list:
-
-    ingredients_string = ' '.join(ingredients_list)
-
-    time_to_insert = st.button('Submit Order')
-
-    if time_to_insert:
-        session.sql("""
-            INSERT INTO smoothies.public.orders (ingredients, name_on_order)
-            VALUES (?, ?)
-        """, params=[ingredients_string, name_on_order]).collect()
-
-        st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
-
-# ----------------------------------------
-# Nutrition Information Section
-# ----------------------------------------
-
-if ingredients_list:
-    st.header("Nutrition Information")
 
     for fruit_chosen in ingredients_list:
-        st.subheader(f"{fruit_chosen} Nutrition")
+
+        ingredients_string += fruit_chosen + ' '
+
+        # Get SEARCH_ON value
+        search_on = fruit_data.loc[
+            fruit_data["FRUIT_NAME"] == fruit_chosen,
+            "SEARCH_ON"
+        ].iloc[0]
+
+        # Show mapping (matches training UI)
+        st.write('The search value for', fruit_chosen, 'is', search_on, '.')
+
+        # Section header
+        st.subheader(fruit_chosen + ' Nutrition Information')
 
         try:
-            response = requests.get(
-                f"https://my.smoothiefroot.com/api/fruit/{fruit_chosen.lower()}"
-            )
-            response.raise_for_status()
+            df = get_nutrition(search_on)
 
-            st.dataframe(
-                data=response.json(),
-                use_container_width=True
-            )
+            if df is not None and not df.empty:
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.warning("No nutrition data available")
 
-        except Exception:
-            st.error(f"Could not load nutrition data for {fruit_chosen}")
+        except requests.exceptions.RequestException:
+            st.error("API request failed. Check internet or API availability.")
+
+# =========================
+# ORDER BUTTON
+# =========================
+if ingredients_list and name_on_order:
+
+    if st.button("Submit Order"):
+
+        st.success(f"Your Smoothie is ordered, {name_on_order}!", icon="✅")
+        st.write("Ingredients:", ingredients_string)
