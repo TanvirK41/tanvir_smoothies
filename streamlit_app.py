@@ -1,5 +1,6 @@
 # Import python packages
 import streamlit as st
+import requests
 from snowflake.snowpark.functions import col
 
 # Snowflake connection (Streamlit Cloud compatible)
@@ -26,13 +27,11 @@ ingredients_list = st.multiselect(
     max_selections=5
 )
 
-# IF block
+# Order submission
 if ingredients_list:
 
-    # Build ingredients string
     ingredients_string = ' '.join(ingredients_list)
 
-    # Submit button
     time_to_insert = st.button('Submit Order')
 
     if time_to_insert:
@@ -42,3 +41,27 @@ if ingredients_list:
         """, params=[ingredients_string, name_on_order]).collect()
 
         st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
+
+# ----------------------------------------
+# Nutrition Information Section
+# ----------------------------------------
+
+if ingredients_list:
+    st.header("Nutrition Information")
+
+    for fruit_chosen in ingredients_list:
+        st.subheader(f"{fruit_chosen} Nutrition")
+
+        try:
+            response = requests.get(
+                f"https://my.smoothiefroot.com/api/fruit/{fruit_chosen.lower()}"
+            )
+            response.raise_for_status()
+
+            st.dataframe(
+                data=response.json(),
+                use_container_width=True
+            )
+
+        except Exception:
+            st.error(f"Could not load nutrition data for {fruit_chosen}")
