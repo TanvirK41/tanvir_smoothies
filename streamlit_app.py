@@ -2,7 +2,7 @@
 import streamlit as st
 from snowflake.snowpark.functions import col
 
-# ✅ NEW CONNECTION (replaces get_active_session)
+# Snowflake connection (Streamlit Cloud compatible)
 cnx = st.connection("snowflake")
 session = cnx.session()
 
@@ -13,9 +13,6 @@ st.write("Choose the fruits you want in your custom smoothie.")
 # Name input
 name_on_order = st.text_input('Name on Smoothie:')
 st.write('The name on your Smoothie will be:', name_on_order)
-
-# Get Snowflake session
-session = get_active_session()
 
 # Load fruit data
 fruit_df = session.table("SMOOTHIES.PUBLIC.FRUIT_OPTIONS") \
@@ -33,21 +30,15 @@ ingredients_list = st.multiselect(
 if ingredients_list:
 
     # Build ingredients string
-    ingredients_string = ''
-
-    for fruit_chosen in ingredients_list:
-        ingredients_string += fruit_chosen + ' '
-
-    # Correct INSERT (2 columns, 2 values)
-    my_insert_stmt = """ insert into smoothies.public.orders(ingredients, name_on_order)
-                        values ('""" + ingredients_string + """','""" + name_on_order + """')"""
+    ingredients_string = ' '.join(ingredients_list)
 
     # Submit button
     time_to_insert = st.button('Submit Order')
 
-    # Insert only on click
     if time_to_insert:
-        session.sql(my_insert_stmt).collect()
+        session.sql("""
+            INSERT INTO smoothies.public.orders (ingredients, name_on_order)
+            VALUES (?, ?)
+        """, params=[ingredients_string, name_on_order]).collect()
 
-        # Success message with name
         st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
