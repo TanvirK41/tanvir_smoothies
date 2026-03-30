@@ -20,18 +20,22 @@ st.write("Choose up to 5 fruits for your smoothie.")
 name_on_order = st.text_input("Name on Smoothie")
 
 # =========================
-# FRUIT DATA (LOCAL)
+# LOAD ALL FRUITS FROM API
 # =========================
-fruit_data = pd.DataFrame({
-    "FRUIT_NAME": [
-        "Apples", "Bananas", "Blueberries", "Jackfruit",
-        "Dragon Fruit", "Guava", "Figs", "Nectarine"
-    ],
-    "SEARCH_ON": [
-        "apple", "banana", "blueberry", "jackfruit",
-        "dragon fruit", "guava", "fig", "nectarine"
-    ]
-})
+@st.cache_data
+def load_fruit_data():
+    response = requests.get("https://my.smoothiefroot.com/api/fruit", timeout=5)
+    data = response.json()
+
+    df = pd.DataFrame(data)
+
+    # Build mapping for UI vs API
+    df["FRUIT_NAME"] = df["name"].str.title()
+    df["SEARCH_ON"] = df["name"]
+
+    return df[["FRUIT_NAME", "SEARCH_ON"]]
+
+fruit_data = load_fruit_data()
 
 # =========================
 # MULTISELECT
@@ -74,7 +78,7 @@ if ingredients_list:
             "SEARCH_ON"
         ].iloc[0]
 
-        # Show mapping (matches training UI)
+        # Display mapping (matches training UI)
         st.write('The search value for', fruit_chosen, 'is', search_on, '.')
 
         # Section header
